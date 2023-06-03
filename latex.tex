@@ -53,6 +53,7 @@
 \makeatletter
 \patchcmd{\maketitle}{}{}{}{}
 \makeatother
+\usepackage{minted}
 \usepackage{pdfpages}
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
@@ -139,34 +140,40 @@
 \maketitle
 
 \section{Abstract}
-This paper presents a novel approach to regression testing in Database Management Systems (DBMSs), specifically focusing on MariaDB instances. The authors have developed a tool that compares the outputs of two different DB versions, identifying potential discrepancies that may indicate regression bugs. The tool records the query, the current states of both DBs, and the output returned by the query upon detecting a difference. This process simplifies the development process and enhances the bug-finding process by employing a coverage-based fuzzing technique. The paper also discusses the challenges and solutions in implementing this approach, including database instrumentation, differential testing implementation, oracle design and implementation, and results filtering and analysis. The authors believe that their approach fills a gap in the current strategies for DBMS testing, providing a new tool and method for detecting regression bugs in DBMSs.
-\section{Introduction}
-Database systems, which are extensively used for data storage and querying, have been thoroughly tested with the intent to detect logical or performance-related bugs. Initial strategies utilized differential testing, followed by Pivoted Query Synthesis (PQS) through generative tools like SQLancer. More recent approaches include Query Plan Guidance (QPG), which directs automated testing toward relevant test cases, and coverage-based guidance using tools like Squirrel for path exploration. Studies demonstrate that the combination of coverage-based guidance and oracle queries results in the discovery of more logical-based bugs, as demonstrated by SQLRight.
+This paper introduces an innovative approach to regression testing in Database Management Systems (DBMSs), with a specific focus on MariaDB instances. The authors present a newly developed tool designed to compare the outputs of two different DB versions, effectively identifying potential discrepancies that may indicate regression bugs. The tool captures essential information such as the query, the current states of both databases, and the query output when a difference is detected. In addition to output comparison, the tool streamlines the development process and enhances bug detection by utilizing a novel coverage-based fuzzing technique. The authors have designed a differential coverage oracle that targets code directly modified between the two versions, aiming to provide comprehensive code coverage. This paper also addresses the implementation challenges associated with this approach, including aspects such as database instrumentation, differential testing implementation, oracle design and implementation, as well as results filtering and analysis. The authors assert that their approach effectively fills a gap in the current strategies for DBMS testing by offering a new tool and methodology for detecting regression bugs. This claim is supported by the authors' discovery of multiple verifiable real bugs in a short period of time, with noticeable differences observed when running the tool with and without the unique coverage oracle.
 
-These combined techniques have proven extremely effective in identifying logical-based bugs, leading researchers to apply them for discovering performance-based bugs. This gave rise to tools like AMOEBA, which revealed several performance bugs. Consequently, these successful techniques can be harnessed for effective regression testing across different versions, resulting in efficient detection of logical bugs.
+
+\section{Introduction}
+Software is composed of a large network of interconnected and interdependent components. Consequently, minor alterations or enhancements can inadvertently affect the functionality of seemingly unrelated code segments. This insight has given rise to the concept of regression testing, which validates the proper functionality of previously developed and tested software following any change \cite{software_testing}.
+
+Identifying such bugs in the context of database management systems (DBMSs) poses a significant challenge due to the complexity of constructing an appropriate test oracle \cite{rigger2020testing}. The variance in database states can lead to wildly differing outputs from identical test cases, making automatic output validation virtually impossible. Existing research further lacks strategies for effectively guiding test cases to detect regression bugs. To address this gap, we have developed a tool capable of discovering regression bugs between two different DBMS versions. This paper specifically focusses on distinct MariaDB instances, however it can also be applied to any relational database. This tool compares the outputs of two different DB versions, pinpointing potential discrepancies. Upon detecting a difference, the tool records that query, the current states of both DBs, and the output returned by the query. This greatly simplifies the development process. These discrepancies may indicate logical bugs or standard crashes in either of the DBs, all of which are recorded in the file. To enhance the bug-finding process, the tool employs a novel highly effective coverage-based fuzzing technique.
+
+Database systems, which are extensively used for data storage and querying, have been thoroughly tested with the intent to detect logical or performance-related bugs. Initial strategies utilized differential testing, followed by Pivoted Query Synthesis (PQS) \cite{rigger2020testing} through generative tools like SQLancer. More recent approaches include Query Plan Guidance (QPG), which directs automated testing toward relevant test cases \cite{liang2022detecting}, and coverage-based guidance using tools like Squirrel \cite{zhong2020squirrel} for path exploration. Studies demonstrate that the combination of coverage-based guidance and oracle queries results in the discovery of more logical-based bugs, as demonstrated by SQLRight \cite{liang2022detecting}.
+
+These combined techniques have proven extremely effective in identifying logical-based bugs, leading researchers to apply them for discovering performance-based bugs. This gave rise to tools like AMOEBA, which revealed several performance bugs \cite{9793961}. Consequently, these successful techniques can be harnessed for effective regression testing across different versions, resulting in efficient detection of logical bugs.
 
 \section{Related Work}
 
-Software testing, and specifically regression testing, is a well-studied area of research, with numerous methodologies and tools having been developed. Regression testing aims to discover new bugs that have been introduced after modifications in the software. However, applying this concept to the domain of Database Management Systems (DBMSs) brings its own unique set of challenges. There has been a plethora of related works focusing on testing DBMSs, but their approaches and objectives vary.
+Software testing, and specifically regression testing, is a well-studied area of research, with numerous methodologies and tools having been developed. Regression testing aims to discover new bugs that have been introduced after modifications in the software \cite{yoo2012regression}. However, applying this concept to the domain of Database Management Systems (DBMSs) brings its own unique set of challenges. There has been a plethora of related works focusing on testing DBMSs, but their approaches and objectives vary.
 
-Differential testing has been a popular method of revealing bugs in DBMSs. It involves running the same test cases on different DBMSs or different versions of the same DBMS, then comparing the outputs. If the outputs do not match, there is likely a bug. However, this approach is fundamentally limited as it can only reveal bugs that cause differences in output; it cannot identify bugs that cause erroneous output which is nonetheless consistent across all DBMSs being tested.
+Differential testing has been a popular method of revealing bugs in DBMSs. It involves running the same test cases on different DBMSs or different versions of the same DBMS, then comparing the outputs. If the outputs do not match, there is likely a bug \cite{slutz1998massive}. However, this approach is fundamentally limited as it can only reveal bugs that cause differences in output; it cannot identify bugs that cause erroneous output which is nonetheless consistent across all DBMSs being tested.
 
-Random testing is another common technique used to uncover bugs in DBMSs. Randoop, for example, generates unit tests for object-oriented programs randomly. Yet, its effectiveness in a complex environment like DBMSs is limited due to the nature of data dependencies and transactional operations.
+Random testing is another common technique used to uncover bugs in DBMSs. Randoop, for example, generates unit tests for object-oriented programs randomly \cite{pacheco2007randoop}. Yet, its effectiveness in a complex environment like DBMSs is limited due to the nature of data dependencies and transactional operations.
 
-Pivoted Query Synthesis (PQS) was later proposed to overcome the limitations of differential testing. By using generative tools like SQLancer, PQS synthesizes SQL queries that are guaranteed to have specific outcomes, thus creating a reliable test oracle. Despite the advantages of PQS, it does not guide test cases to expose bugs effectively, which is a crucial aspect in the realm of regression testing.
+Pivoted Query Synthesis (PQS) \cite{rigger2020testing} was later proposed to overcome the limitations of differential testing. By using generative tools like SQLancer, PQS synthesizes SQL queries that are guaranteed to have specific outcomes, thus creating a reliable test oracle. Despite the advantages of PQS, it does not guide test cases to expose bugs effectively, which is a crucial aspect in the realm of regression testing.
 
-Recent studies have made strides in addressing this limitation. Query Plan Guidance (QPG) was introduced by Jinsheng et al. to guide automated testing toward more promising test cases. QPG uses the database's query execution plan to generate test cases that are more likely to reveal bugs. In a similar vein, Squirrel developed an approach using coverage-based guidance for path exploration in DBMS testing, enhancing the effectiveness of differential testing.
+Recent studies have made strides in addressing this limitation. Query Plan Guidance (QPG) was introduced by Jinsheng et al. \cite{jinsheng2023query} to guide automated testing toward more promising test cases. QPG uses the database's query execution plan to generate test cases that are more likely to reveal bugs. In a similar vein, Squirrel developed an approach using coverage-based guidance for path exploration in DBMS testing \cite{zhong2020squirrel}, enhancing the effectiveness of differential testing.
 
-Meanwhile, work by Chong et al.  explored the use of symbolic execution, a technique originally applied in general software testing, for detecting bugs in DBMS. Their approach, while significantly different, shares the same goal of achieving greater accuracy and effectiveness in DBMS testing. Other research, like that of Emmi et al., proposed the use of static analysis for DBMS testing, revealing its potential in identifying tricky concurrency bugs.
+Meanwhile, work by Chong et al. \cite{chong2023data} explored the use of symbolic execution, a technique originally applied in general software testing, for detecting bugs in DBMS. Their approach, while significantly different, shares the same goal of achieving greater accuracy and effectiveness in DBMS testing. Other research, like that of Emmi et al., proposed the use of static analysis for DBMS testing, revealing its potential in identifying tricky concurrency bugs \cite{emmi2015delay}.
 
-The work by Liang et al. combined the concepts of coverage-based guidance and oracle queries, leading to an improved discovery of logical bugs with SQLRight . This combined approach was later adopted to discover performance-based bugs, giving birth to tools like AMOEBA . Nevertheless, their potential in effective regression testing across different versions has not been fully explored.
+The work by Liang et al. combined the concepts of coverage-based guidance and oracle queries, leading to an improved discovery of logical bugs with SQLRight \cite{liang2022detecting}. This combined approach was later adopted to discover performance-based bugs, giving birth to tools like AMOEBA \cite{9793961}. Nevertheless, their potential in effective regression testing across different versions has not been fully explored.
 
 The work presented in this paper builds upon these prior studies. While we share the overall objective of improving DBMS reliability, our approach diverges by focusing specifically on regression testing. In particular, we propose a tool for discovering regression bugs in different instances of MariaDB, employing a coverage-based fuzzing technique to enhance the bug-finding process.
 
 \begin{figure}[H]
 \centering
 \includegraphics[scale=0.2]{squirrel_layout.png}
-\caption{Design of Squirrel, used as this tool's base }
+\caption{Design of Squirrel, used as this tool's base \cite{zhong2020squirrel}}
 \label{fig:Squirrel_execution_flow}
 \end{figure}
 
@@ -210,16 +217,16 @@ Another aspect considered is that of SQL errors. This approach compares the spec
 
 Consequently, for each test query, this paper collects the following information: the SQL status for each statement in the query, the received error message (if any), and a full output of the database. The latter is collected by running an additional query after the test to obtain the name of each table in the database, and to SELECT everything within them. This information is concatenated and compared  across each tested DB version. If any difference is observed, this is recorded as a differential bug and is saved for further review.
 
-One key challenge of this approach is that the order of SQL outputs is \textit{not} guaranteed. As a result, when comparing the internal state of the database using the final SELECT statements, different output orders are categorized as a bug. This is mitigated by placing each returned row into an unordered set, and simply comparing the set. The second challenge is determining what is truly a regression bug. This is further discussed in section.
+One key challenge of this approach is that the order of SQL outputs is \textit{not} guaranteed. As a result, when comparing the internal state of the database using the final SELECT statements, different output orders are categorized as a bug. This is mitigated by placing each returned row into an unordered set, and simply comparing the set. The second challenge is determining what is truly a regression bug. This is further discussed in section \ref{lab:results_filtering}.
 
 \subsection{Coverage Oracle Design}
-The second contribution of this paper is the 'differential code coverage' metric, used to guide the mutator into finding more relevant queries. Given that Squirrel simply runs on-top of AFL++, the existing coverage-guided fuzzing is rudimentary. It directs mutation by prioritizing inputs that increase the coverage, and mutating these inputs more often during the fuzzing process. While this is a simple approach, it has been shown experimentally to work well. Alternative methodologies are more complex and require a 'coverage aware' mutation engine , which is out of the scope of this work.
+The second contribution of this paper is the 'differential code coverage' metric, used to guide the mutator into finding more relevant queries. Given that Squirrel simply runs on-top of AFL++, the existing coverage-guided fuzzing is rudimentary. It directs mutation by prioritizing inputs that increase the coverage, and mutating these inputs more often during the fuzzing process. While this is a simple approach, it has been shown experimentally to work well. Alternative methodologies are more complex and require a 'coverage aware' mutation engine \cite{liang2022detecting}, which is out of the scope of this work.
 
 This paper builds upon this by only using the edges of 'changed code' to inform the mutation of the next test cases. As a result, an oracle needs to be developed that manipulates the coverage report to strip away the coverage of unrelated parts of code. Such an approach is very versatile, as it allows future users to further alter the coverage oracle to achieve different purposes - for instance, combining reports accross multiple DB versions.
 
 \subsection{Results Filtering and Analysis}
 \label{lab:results_filtering}
-Finally, the methodology needs a way to determine which of the detected 'differences' are truly bugs. Initial tests encountered bugs that were simply a result of different default configuration parameters (i.e. maximum query length, and maximum timeout length) and a result of a different output order (mitigated with the map, discussed in Section). Manual effort is required to filter these out.
+Finally, the methodology needs a way to determine which of the detected 'differences' are truly bugs. Initial tests encountered bugs that were simply a result of different default configuration parameters (i.e. maximum query length, and maximum timeout length) and a result of a different output order (mitigated with the map, discussed in Section \ref{lab:test_oracle}). Manual effort is required to filter these out.
 
 In addition to the spurious bug examples above, there are other categories of common bugs detected. Some 'differences' between DB version outputs are repeatable and readily replicable: yielding logical differences in the outputs. These are classified as real bugs to be further investigated. Other 'differences' cannot always be replicated, and depend on the load that the database is experiencing at the time the query is run. Since MariaDB is designed to be a wrapper for MySQL that performs well under high workloads and parallel processing, these are usually considered real bugs but are more challenging to replicate. These require further manual investigation to ensure that the behaviour is truly unexpected, and not an issue resulting from an external error unrelated to the test harness system or the database.
 
@@ -241,17 +248,17 @@ Firstly, the decision to use Squirrel, as opposed to other tools such as SQLrigh
 
 A suitable SQL-based DBMS was required in order to implement and test the proposed methodology. The criterion for selection required that the DB have a wide usage, an open-source status, and an active development community. These goals would ensure that our findings would assist the development of the database and make a meaningful contribution.
 
-MariaDB was ultimately selected, given that it is one of the most popular open-source relational databases in use. Created by the original developers of MySQL and with the support of a more active and community-driven open-source development model, MariaDB is included in most cloud offerings and serves as the default choice in most Linux distributions . A characteristic of note is that MariaDB runs \textit{on-top} of MySQL, incorporating additional features and improvements that primarily aim to optimize performance and improve parallel data processing at scale.
+MariaDB was ultimately selected, given that it is one of the most popular open-source relational databases in use. Created by the original developers of MySQL and with the support of a more active and community-driven open-source development model, MariaDB is included in most cloud offerings and serves as the default choice in most Linux distributions \cite{mariadb}. A characteristic of note is that MariaDB runs \textit{on-top} of MySQL, incorporating additional features and improvements that primarily aim to optimize performance and improve parallel data processing at scale.
 
-As described in the literature review, no existing approach fully implements the bug-finding methodology introduced in this paper. As a result, it was important to select a suitable tool to use as a base for the required modifications. SQLancer and SQLsmith were deemed unsuitable due to their exclusive reliance on randomization and pre-designed rules for syntactical query generation. Instead, a tool was sought that already implemented coverage-guided fuzzing to improve the query generation . This is still an active research direction, and hence it was out of the scope of this paper to design such a system.
+As described in the literature review, no existing approach fully implements the bug-finding methodology introduced in this paper. As a result, it was important to select a suitable tool to use as a base for the required modifications. SQLancer and SQLsmith were deemed unsuitable due to their exclusive reliance on randomization and pre-designed rules for syntactical query generation. Instead, a tool was sought that already implemented coverage-guided fuzzing to improve the query generation \cite{zhong2020squirrel}. This is still an active research direction, and hence it was out of the scope of this paper to design such a system.
 
-SQLRight, with its implementation of both a test oracle and coverage-guided fuzzing, initially appeared as a viable option. However, its shortcomings, such as poor documentation, lack of out-of-the-box support for MariaDB, and reliance on an undocumented patch of the database under test for the coverage process, made it less suitable for our core goal. This goal is to create a versatile framework for testing different database versions without requiring additional modifications to the database under test, other than code instrumentation.
+SQLRight \cite{liang2022detecting}, with its implementation of both a test oracle and coverage-guided fuzzing, initially appeared as a viable option. However, its shortcomings, such as poor documentation, lack of out-of-the-box support for MariaDB, and reliance on an undocumented patch of the database under test for the coverage process, made it less suitable for our core goal. This goal is to create a versatile framework for testing different database versions without requiring additional modifications to the database under test, other than code instrumentation.
 
-%\subsubsubsection{Comparison with SQLright}
+\subsubsubsection{Comparison with SQLright}
 
 In the quest for a suitable tool, we compared SQLRight with Squirrel, another coverage-guided fuzzer. Squirrel's architecture, built on AFLplusplus, uses a yaml configuration file and environment variables for setup. Its native support for MariaDB and its ability to implement coverage-guided syntactical fuzzing aligned well with our specific strategies and methodologies.
 
-Despite SQLRight's advanced features like validity-oriented mutations and oracles for detecting logical bugs, it fell short in critical areas, as mentioned earlier. These shortcomings, coupled with the fact that SQLRight is built on top of Squirrel, led us to select Squirrel as the basis for our work.
+Despite SQLRight's advanced features like validity-oriented mutations and oracles for detecting logical bugs, it fell short in critical areas, as mentioned earlier. These shortcomings, coupled with the fact that SQLRight is built on top of Squirrel \cite{zhong2020squirrel}, led us to select Squirrel as the basis for our work.
 
 Squirrel supports coverage-guided query generation for MariaDB natively and implements coverage-guided syntactical fuzzing. A diagrammatic outline of its operation can be found in Figure \ref{fig:Squirrel_execution_flow}. Squirrel uses AFL++ under the hood, manipulating the seeded inputs in the AFL queue by applying its own syntactical mutation engine. However, it heavily relies upon the underlying AFL++ library for the other code infrastructure, does not implement a testing oracle, and detects only crash bugs. Furthermore, the coverage retrieved from executing the instrumented database is only used to select which seed input is to be mutated and selected in the next round of fuzzing, re-using this strategy and code from the underlying AFL++ implementation.
 
@@ -308,6 +315,7 @@ The first key implementation was the integration of a second database. This was 
 The main event loop for fuzzing can be found in 'db\_factor.cc'. A pseudo-code extract from this file can be seen in the listing below. It begins by creating and initializing a vector called databases, which holds instances of DBClient representing different databases. Each database is created based on the provided configuration. To facilitate the fuzz testing, shared memory is initialized with a specific size using the \_\_afl\_map\_shm() function, allowing efficient communication between the different components of the process. Under the hood, it uses the C library function 'shm\_open(shm\_file\_path, O\_RDWR, 0600);' to mount the shared memory with a file based API. Additionally, memory is allocated for a buffer called buf with a maximum size defined as kMaxInputSize, which will store the fuzz test cases.
 
 Next, each database in the databases vector is checked if it is live. If a database is not alive, indicating that it has not been started yet, the startup() method is invoked to initiate the database. The AFL fork server is then started using the \_\_afl\_start\_forkserver() function. This fork server is responsible for efficiently spawning and managing multiple parallel instances of the fuzz test execution. Then the event loop starts - continuing until there are no more fuzz test cases provided by AFL. Within each iteration of the loop, a fuzz test case is retrieved from AFL, stored in the buf buffer using the \_\_afl\_next\_testcase() function, and passed to the databases. The results are collected and passed to the test oracle (described later).
+
 
 When the DB is started, it receives some parameters so that several DBs can be set up and run in the same machine without issues. Those parameters were also predefined in the original Squirrel repo. However, most of them are fixed (and even some, not accessible) for one DB. So, it was decided to redesign the configuration file to accomodate the use of several DB. Consequently, all the different fields of the config file were 
 \subsection{Comparison of Configuration Files}
@@ -445,6 +453,7 @@ startup_cmd: " --log-error=err_log.err  --max_statement_time=1 &"
 \end{verbatim}
 
 The "startup\_cmd" field has been simplified, relying on the preceding fields for execution details.
+
 
 \begin{lstlisting}[language=C++, caption={db\_driver.c Main Eventloop Pseudocode}, label={lst:dbdriver}]
   vector<DBClient *> databases{};
@@ -657,8 +666,10 @@ The second suspected bug was related to the return order of SELECT queries, as s
     \end{figure}
 A detailed record of the bugs that appeared legitimate but were eventually determined not to be, can be found in the complete project handout. Each entry follows this pattern: firstly, the query, followed by the return of each subquery as well as the internal state of the whole database at the end of the execution of all the subqueries, regardless of whether the DB crashed or not. This data extraction is replicated for the subsequent DB.
 
+
+
 \section{Results}
-Overall, the methodology was highly successful. After 4 days of fuzzing, once the changes in the previous section were implemented, more than 500 bugs were detected. Of these, there were 9 'unique' bugs - essentially 9 categories of inputs that yield similar types of bugs. In this section, these bugs are discussed and the performance of our methodology is evaluated.
+Overall, the methodology was highly successful. After 2 days of fuzzing, once the changes in the previous section were implemented, more than 500 bugs were detected. Of these, there were 9 'unique' bugs - essentially 9 categories of inputs that yield similar types of bugs. In this section, these bugs are discussed and the performance of our methodology is evaluated.
 
 To prove the whole correctness of the system, two different database versions were picked, MariaDB version 11.0 (release candidate) and MariaDB version 10.10. These versions were picked because the latter has been extensively modified and parched as more bugs were discovered and the former includes a major revision of MariaDB. Hence, a higher chance of finding a regression bug.
 
@@ -669,7 +680,7 @@ After running our tool for several days, it encountered several bugs. Those bugs
 \end{itemize}
 Although this tool is able to identify performance regression bugs (given that both MariaDB instances are under the same load before and after the query and they both have access to the same amount of RAM), we decided not to focus on this aspect, as the goal of this project was to find logical regression bugs.
 
-When investigating the 9 unique bugs detected, it was important to determine if they truly were regression bugs or not. This is challenging, because often times it is not clear what the correct output of the query is meant to be. As a result, for each potential bug, the query was converted into MySQL syntax and run on the newest version of MySQL. The idea behind this is that if the bug is a real regression, then the new version of MySQL should be consistent with the old version of MariaDB. This is because
+When investigating the 9 unique bugs detected, it was important to determine if they truly were regression bugs or not. This is challenging, because often times it is not clear what the correct output of the query is meant to be. As a result, for each potential bug, the query was converted into MySQL syntax and run on the newest version of MySQL. The idea behind this is that if the bug is a real regression, then the new version of MySQL should be consistent with the old version of MariaDB. It is unlikely that the same bug is introduced to MariaDB and MySQL. Following this procedure, there were two bugs that ended up being true regression bugs. These are discussed in the following section.
 
 \subsection{Unveiling Regression Bugs}
 
@@ -814,10 +825,18 @@ WHERE NOT ('x' = 'x' AND v2 = 0);
 In this one, MariaDB 11 (release candidate) returns an error "ERROR 1054 (42S22) at line 4: Unknown column 'v3' in 'order clause'". However, MariaDB 10.10 returns a different type of error, ERROR 1066 (42000) at line 6: Not unique table/alias: 'v0'
 
 In order to validate that this anomaly indeed constitutes a bug, the query was executed on the most recent release of MySQL, leading to inconsistent outcomes. When run on MariaDB 11.0 (release candidate), the system returned an "ERROR 1054 (42S22) at line 4: Unknown column 'v3' in 'order clause'". Contrasting, the result generated by MySQL, as depicted in the appendix, was congruent with the output from MariaDB 10.10. This discrepancy substantiates the presence of a regression bug between MariaDB 11.0 and MariaDB 10.10.
-\section{Conclusion}
 
-In conclusion, we have successfully developed a tool for effective regression testing in Database Management Systems, specifically MariaDB instances. This tool, which employs a coverage-based fuzzing technique, has proven to be a valuable asset in detecting regression bugs by comparing the outputs of two different DB versions. We have also addressed the unique challenges associated with implementing this approach, providing solutions that enhance the reliability and effectiveness of the tool. This work contributes significantly to the field of DBMS testing, filling a notable gap in existing strategies. Future work could focus on refining the tool and exploring its applicability to other DBMSs, further enhancing its versatility and utility in the realm of software testing.
+\subsection{Efficacy of the Methodology}
+Given the speed at which new bugs were found, this appears to be an effective approach to detect regression logical bugs. However, it is difficult to determine if the differential coverage oracle played a role in this success.
+
+As a result, a further test was run. Fuzzing was also run for 2 days without the differential coverage - simply with normal full coverage. In this time, no bugs were detected. This is not a conclusive result, as fuzzing is a highly randomised process, and it is possible that between runs, even the same methodology will result in different levels of success. Overall, however, it is believed that the differential coverage oracle makes a significant improvement in the speed of bug detection.
+
+Further investigation can be conducted in the future into how the coverage oracle can be manipulated to better find bugs.
+
 \bibliographystyle{plain}
+\bibliography{citation.bib}
+\printbibliography
+\blinddocument
 \clearpage
 \section{Appendix}
 \label{app:dockerfile}
@@ -873,6 +892,8 @@ SELECT v3, v4
 FROM v0 
 WHERE NOT ('x' = 'x' AND v2 = 0);
 \end{lstlisting}
+\caption{The second identified SQL query leading to a regression bug}
+\label{fig:bug_2}
 \subsection{First query to MySQL to check if the discrepancy was a bug}
 \begin{lstlisting}
 -- First, we create a table v0 with a single integer column v1
@@ -922,8 +943,10 @@ SELECT v1, v1
 FROM v0 
 WHERE NOT ('x' = 'x' AND v1 = 99);
 \end{lstlisting}
+\caption{The second identified SQL query leading to a regression bug}
 \subsubsection{Authors:}
 \end{document}
 \endinput
 %%
 %% End of file `sample-acmcp.tex'.
+Do you like boobies?
